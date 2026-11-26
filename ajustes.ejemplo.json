@@ -1,0 +1,24 @@
+{
+  "idioma": "es",
+  "usuario": "Tu nombre",
+  "buzon": {
+    "tipo": "cloudflare",
+    "url": "",
+    "nombre_worker": "vocci-buzon",
+    "d1_id": ""
+  },
+  "agentes": [
+    {
+      "id": "bruno",
+      "nombre": "Bruno",
+      "palabras": ["runo", "pruno", "bruna", "brunno"],
+      "tipo": "claude",
+      "destino": "Nombre exacto del hilo de Claude"
+    }
+  ],
+  "reglas": [
+    "Lo que salga hacia fuera o no se pueda deshacer (enviar un correo, publicar, comprar, borrar) se prepara y espera mi sí escrito aquí.",
+    "Si la transcripción no se entiende o un nombre o una cifra no cuadran, no adivines: pregúntame."
+  ],
+  "espera_segundos": 30
+}

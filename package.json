@@ -1,0 +1,10 @@
+{
+  "name": "vocci-puente",
+  "version": "0.1.0",
+  "description": "Lleva las notas del anillo Vocci al hilo de tu agente (Claude o Codex).",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "scripts": { "test": "node --test" }
+}
