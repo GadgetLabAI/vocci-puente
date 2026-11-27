@@ -4,7 +4,7 @@
 
 Quiero que montes en mi ordenador un puente entre mi anillo Vocci y mis agentes. Cuando grabe una nota que empiece por el nombre de un agente («Bruno, apunta que…»), la nota tiene que llegar sola al hilo o conversación de ese agente, y él la atiende como si yo se la hubiera escrito allí.
 
-Vale para Claude (app de escritorio con Claude Code) y para Codex (app de escritorio). Lee el texto entero antes de hacer nada.
+Vale para Claude (app de escritorio con Claude Code), Codex, Antigravity y Grok Bot (apps de escritorio). Lee el texto entero antes de hacer nada.
 
 ## Cómo funciona
 
@@ -28,11 +28,11 @@ Hace falta Node 20 o superior. Si no está instalado, dime cómo instalarlo y es
 
 Antes de tocar nada, hazme estas preguntas, todas juntas, y espera mis respuestas. Donde puedas averiguar la respuesta tú, propónmela y yo la confirmo.
 
-1. **¿Eres Claude o Codex?** De eso depende la entrega: en Claude es un mensaje al hilo de la app de escritorio, buscado por su nombre; en Codex, un mensaje a la conversación por su identificador.
+1. **¿Qué agente eres: Claude, Codex, Antigravity o Grok Bot?** De eso depende la entrega: en Claude es un mensaje al hilo de la app de escritorio, buscado por su nombre; en Codex y en Antigravity, un mensaje a la conversación por su identificador; en Grok Bot, una rutina que se arranca con un webhook.
 2. **¿Un agente o varios?** Para cada uno:
    - la palabra que lo activa (su nombre);
-   - si es Claude o Codex (por ahora solo valen esos dos);
-   - el hilo o conversación de destino. En Claude, el nombre exacto del hilo, que tiene que ser único: si hay dos con nombres parecidos, proponme renombrar uno. En Codex, el identificador de la conversación; si el destino es esta misma, averígualo tú.
+   - de qué tipo es: `claude`, `codex`, `antigravity` o `grokbot`;
+   - el hilo o conversación de destino. En Claude, el nombre exacto del hilo, que tiene que ser único: si hay dos con nombres parecidos, proponme renombrar uno. En Codex y en Antigravity, el identificador de la conversación; si el destino es esta misma, averígualo tú (en Antigravity lo tienes en la variable `ANTIGRAVITY_CONVERSATION_ID` o en `~/.gemini/antigravity/conversations`). En Grok Bot, crea tú mismo (o guíame para pedírtelo en el chat) una rutina que se active con un webhook y cuyas instrucciones sean atender el encargo que llega en el contexto; el destino es la URL que sale en la ficha de la rutina, y la clave la pego yo en la terminal con `node puente.mjs clave <agente>`: no me la pidas en el chat.
 3. **¿Tengo servidor propio (VPS)?**
    - Si lo tengo, monta allí el buzón (apartado «En tu servidor» del README).
    - Si no, monta un Cloudflare Worker gratis en mi cuenta. Si no tengo cuenta, guíame para crearla. El inicio de sesión (`npx wrangler login`) lo hago yo en el navegador. En mi cuenta crea solo el Worker y su base de datos; no toques nada más.
@@ -75,6 +75,6 @@ Si algo no llega, mira `~/.vocci-puente/puente.log` y el apartado «Si una nota 
   - qué has montado y dónde está cada cosa;
   - cómo se para y cómo se quita (`node puente.mjs arranque quitar`, borrar el Worker o el servicio y el endpoint de Vocci);
   - qué pasa con el PC apagado: las notas esperan en el buzón y entran al encenderlo;
-  - qué gasta: en Claude, una llamada pequeña por nota; en Codex, nada hasta que el agente la atiende;
+  - qué gasta: en Claude, una llamada pequeña por nota; en Codex y en Antigravity, nada hasta que el agente la atiende; en Grok Bot, una ejecución de la rutina por nota;
   - que si un día deja de llegar una nota, lo primero es mirar `~/.vocci-puente/puente.log`;
-  - que en Codex la entrega usa una pieza interna de la app y una actualización puede romperla.
+  - que en Codex y en Antigravity la entrega usa una pieza interna de la app y una actualización puede romperla, y que Antigravity tiene que estar abierto.

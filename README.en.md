@@ -10,6 +10,8 @@
   <img alt="Vocci ring" src="https://img.shields.io/badge/ring-Vocci-4A5553?style=flat-square">
   <img alt="Claude" src="https://img.shields.io/badge/Claude-tested-2E7D5B?style=flat-square">
   <img alt="Codex" src="https://img.shields.io/badge/Codex-tested-2E7D5B?style=flat-square">
+  <img alt="Antigravity" src="https://img.shields.io/badge/Antigravity-tested-2E7D5B?style=flat-square">
+  <img alt="Grok Bot" src="https://img.shields.io/badge/Grok%20Bot-tested-2E7D5B?style=flat-square">
   <img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-4A5553?style=flat-square">
   <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-0-4A5553?style=flat-square">
   <a href="https://www.youtube.com/@GadgetLabOficial"><img alt="YouTube" src="https://img.shields.io/badge/YouTube-GadgetLab-FF0000?style=flat-square&logo=youtube&logoColor=white"></a>
@@ -18,7 +20,7 @@
 You tell your **Vocci** ring “Bruno, note that there is a meeting on Tuesday” and, a couple of minutes later, the note shows up by itself in your agent's thread. The agent handles it as if you had typed it there. No phone, no app to open.
 
 - 🎙️ **Say it to the ring and it gets done.** If the note starts with your agent's name, it is for the agent. If not, it is yours and it is not stored.
-- 🤖 **For Claude and Codex**, in their desktop apps. One agent or several, each with its own name and thread.
+- 🤖 **For Claude, Codex, Antigravity and Grok Bot**, in their desktop apps. One agent or several, each with its own name and thread.
 - ☁️ **Free to run.** The mailbox is a Cloudflare Worker on the free plan, or your own server.
 - 💤 **Nothing is lost with the PC off.** Notes wait and arrive when it is back on.
 - 🔍 **Three code files, no dependencies.** Your agent reads them in a couple of minutes before installing anything.
@@ -115,7 +117,7 @@ They live outside the repository, in `~/.vocci-puente/ajustes.json`:
 - **`idioma`** (language): `es` or `en`, for the text that goes with each note.
 - **`usuario`** (user): your name.
 - **`buzon`** (mailbox): `tipo` is `cloudflare` or `servidor` (own server).
-- **`agentes`** (agents): add one entry per agent. Each has its own word and thread, and you can mix Claude and Codex.
+- **`agentes`** (agents): add one entry per agent. Each has its own word and thread, and you can mix the four types (`claude`, `codex`, `antigravity`, `grokbot`). In `antigravity` the destination is the conversation identifier; in `grokbot`, the webhook URL of a routine (the key is stored separately with `node puente.mjs clave <agent>`).
 - **`palabras`** (words): the ways transcription tends to misspell the name. They only count at the start of the note, possibly after a filler word (“Hey, Bruno…”).
 - **`tipo` and `destino`** (type and destination): for `claude`, the name of the desktop app thread, which must be unique; for `codex`, the conversation identifier.
 - **`reglas`** (rules): the lines that travel with each note.
@@ -194,7 +196,8 @@ Press “Send test event” in Vocci: within a minute a test message must appear
 | `probar <agent> "text"` | Delivers a simulated note to the thread, bypassing the mailbox. |
 | `repartir [--una-vez]` | The delivery process (`--una-vez`: run once). |
 | `arranque instalar\|quitar\|estado` | Autostart with your session: install, remove, status. |
-| `liberar <session>` | Retries a Codex note held back after a doubtful delivery. |
+| `liberar <session>` | Retries a note held back after a doubtful delivery. |
+| `clave <agent>` | Stores the webhook key of a Grok Bot agent. You paste it in the terminal; it is kept out of the settings and the log. |
 | `simular "text"` | Development only: sends the mailbox a webhook signed with the secret in the `VOCCI_SECRETO` variable. |
 
 ## 🩺 If a note does not arrive
@@ -211,6 +214,8 @@ Look at `~/.vocci-puente/puente.log` first (its messages are in Spanish). The us
 - **Claude.** A program cannot write to a thread in the app, but another Claude session can. For each note a minimal `claude -p` is launched (Haiku model, no connectors and only three tools: `ListAgents`, `SendMessage` and `ToolSearch`) that finds the thread by name and passes the message on. It uses a few seconds of your plan per note. The Claude app must be open.
 - **That delivery session can write to any of your threads**, not only the chosen one. The note text travels marked as a package it must not interpret, and the program only counts the delivery as good if it went to the right thread, but that is a barrier made of instructions, not a technical one.
 - **Codex.** It uses the local MCP server that ships with the app (`codex_app`, tools `read_thread` and `send_message_to_thread`), with no model use. It is an internal part of the app: a Codex update may change it. If the conversation is busy, the note waits. If a send is cut halfway it is not resent blindly: it is held until you look at it.
+- **Antigravity.** It uses the command that ships with the app (`agentapi send-message`), which writes to the conversation by its identifier, with no model use until the agent handles it. Antigravity must be open. The agent receives the note as a system message, not as if you had typed it. It is an internal part of the app: an update may change it. If a send is cut halfway, the note is held.
+- **Grok Bot.** You ask the bot, in its chat, to create a routine triggered by a webhook; the URL and the key appear in that routine's panel (bot panel → Routines). Each note starts that routine with the message as context, so every task is a new run of the routine, not a message in an open conversation. It runs in the Grok Bot cloud: the app does not need to be open. The key is stored in `~/.vocci-puente/secretos.json`.
 - **Who is speaking is not checked.** Any recording from your ring whose first sentence starts with the agent's name is a request, whoever says it.
 - **A process stays running.** The autostart launches the delivery process without a window when you sign in. Remove it with `node puente.mjs arranque quitar`.
 - **Privacy.** Personal notes are not stored. Agent notes stay in the mailbox until delivered; then the text is deleted and only the recording identifier is kept, to avoid repeating it, for 30 days. The log holds no note text and no secrets.
@@ -223,6 +228,8 @@ Look at `~/.vocci-puente/puente.log` first (its messages are in Spanish). The us
 | Windows 11 + Claude + Cloudflare, with real notes from the ring | Tested end to end |
 | Setup done by a fresh agent with only the prompt | Tested with Claude |
 | Windows 11 + Codex | Delivery tested with a simulated note (`probar`); not yet tested end to end with a note from the ring |
+| Windows 11 + Antigravity + Cloudflare, with a real note from the ring | Tested end to end |
+| Windows 11 + Grok Bot + Cloudflare, with a real note from the ring | Tested end to end |
 | Mailbox on your own server | Tested locally |
 | Autostart on macOS (launchd) and Linux (systemd) | Written, untested |
 
@@ -230,7 +237,7 @@ If you set it up on something we have not tested and it fails, open an issue: it
 
 ## 🧩 Other agents and other recorders
 
-**Other agents.** Today it delivers to Claude and Codex. The mailbox and the queue know nothing about the agent: adding another one (Gemini, Grok or whichever you use) only takes a new delivery function in `puente.mjs`, as long as that agent has a way to receive a message from outside. If you get it working with yours, tell us in an issue or send a change.
+**Other agents.** Today it delivers to Claude, Codex, Antigravity and Grok Bot. The mailbox and the queue know nothing about the agent: adding another one only takes a new delivery function in `puente.mjs`, as long as that agent has a way to receive a message from outside. If you get it working with yours, tell us in an issue or send a change.
 
 **Other recorders.** It is built for the Vocci ring, which is the one we have. Any recorder that sends a webhook with the transcript can use the same mailbox by changing how the event is read (`buzon/nucleo.mjs`). One that sends no notifications would have to be polled every few minutes.
 

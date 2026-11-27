@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// vocci-puente: lleva las notas del anillo Vocci al hilo de tu agente (Claude o Codex).
+// vocci-puente: lleva las notas del anillo Vocci al hilo de tu agente (Claude, Codex, Antigravity o Grok Bot).
 //
 // Un solo programa, sin dependencias (Node 20 o superior). Órdenes:
 //
@@ -13,6 +13,7 @@
 //   node puente.mjs repartir [--una-vez]    el repartidor: lee la cola y entrega (lo que queda encendido)
 //   node puente.mjs arranque instalar|quitar|estado   arranque automático con tu sesión
 //   node puente.mjs liberar <sesion>        vuelve a intentar una nota retenida por entrega dudosa
+//   node puente.mjs clave <agente>          guarda la clave del webhook de un agente de Grok Bot (se pega, no se enseña)
 //
 // Lo privado (ajustes, token, estado y registro) vive fuera del repositorio, en ~/.vocci-puente
 // (o donde diga la variable VOCCI_PUENTE_DIR). El registro nunca lleva texto de notas ni claves.
@@ -35,6 +36,7 @@ const F_LOG = path.join(CASA, "puente.log");
 const F_CERROJO = path.join(CASA, "repartidor.pid");
 const WINDOWS = process.platform === "win32";
 const TAREA = "Vocci puente";
+const TIPOS = ["claude", "codex", "antigravity", "grokbot"];
 const REINTENTO_MS = 2 * 60_000;
 const TIEMPO_CLAUDE_MS = 4 * 60_000;
 
@@ -125,11 +127,15 @@ function cargarAjustes() {
     if (!/^[a-z0-9_-]{1,40}$/.test(g.id)) errores.push(`agente con id no válido: «${g.id}» (minúsculas, números, - o _)`);
     g.nombre = String(g.nombre || g.id);
     g.palabras = Array.isArray(g.palabras) ? g.palabras.map(String) : [];
-    if (!["claude", "codex"].includes(g.tipo)) errores.push(`${g.id}: tipo debe ser "claude" o "codex"`);
+    if (!TIPOS.includes(g.tipo)) errores.push(`${g.id}: tipo debe ser uno de: ${TIPOS.join(", ")}`);
     if (!g.destino || typeof g.destino !== "string") errores.push(`${g.id}: falta destino`);
     else if (/[\r\n]/.test(g.destino)) errores.push(`${g.id}: destino no puede tener saltos de línea`);
     else if (g.tipo === "codex" && !/^[0-9a-f-]{20,}$/i.test(g.destino)) {
       errores.push(`${g.id}: en Codex el destino es el identificador de la conversación (threadId)`);
+    } else if (g.tipo === "antigravity" && !/^[0-9a-f-]{20,}$/i.test(g.destino)) {
+      errores.push(`${g.id}: en Antigravity el destino es el identificador de la conversación`);
+    } else if (g.tipo === "grokbot" && !/^https:\/\/[^\s?#]+\/automations\/webhook\/[^\s/?#]+$/.test(g.destino)) {
+      errores.push(`${g.id}: en Grok Bot el destino es la URL del webhook de la rutina (https://…/automations/webhook/…), sin la clave`);
     }
   }
   try {
@@ -471,11 +477,156 @@ async function entregarCodex(ajustes, agente, nota, codex) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Entrega a Antigravity: la app trae su propio comando («agentapi», dentro de language_server) para
+// escribir en una conversación. Habla con la app abierta por un puerto local que ella misma apunta,
+// junto con su contraseña de un solo uso, en ~/.gemini/antigravity/daemon.
+
+const AGY_CASA = path.join(os.homedir(), ".gemini", "antigravity");
+
+function antigravityPrograma(ajustes) {
+  if (ajustes.antigravity?.programa) return ajustes.antigravity.programa;
+  const posibles = WINDOWS
+    ? [path.join(process.env.LOCALAPPDATA || "", "Programs", "Antigravity", "resources", "bin", "language_server.exe")]
+    : ["/Applications/Antigravity.app/Contents/Resources/bin/language_server", "/usr/share/antigravity/resources/bin/language_server", "/opt/Antigravity/resources/bin/language_server"];
+  try {
+    // La app deja un lanzador con la ruta exacta de su programa.
+    for (const n of fs.readdirSync(path.join(AGY_CASA, "bin"))) {
+      const ruta = fs.readFileSync(path.join(AGY_CASA, "bin", n), "utf8").match(/"([^"\r\n]*language_server[^"\r\n]*)"/)?.[1];
+      if (ruta) posibles.unshift(ruta);
+    }
+  } catch {
+    /* sin lanzador: se prueban las rutas habituales */
+  }
+  const hallado = posibles.find((r) => r && fs.existsSync(r));
+  if (!hallado) throw new Error("no encuentro el programa de Antigravity; indícalo en ajustes (antigravity.programa)");
+  return hallado;
+}
+
+function antigravityConexion() {
+  const dir = path.join(AGY_CASA, "daemon");
+  let fichas = [];
+  try {
+    fichas = fs.readdirSync(dir).filter((n) => /^hub_\d+\.json$/.test(n)).map((n) => ({ ...leerJson(path.join(dir, n)), cuando: fs.statSync(path.join(dir, n)).mtimeMs }));
+  } catch {
+    /* sin carpeta: la app no se ha abierto nunca */
+  }
+  const viva = fichas.filter((f) => {
+    if (!f.pid || !f.httpPort || !f.csrfToken) return false;
+    try {
+      process.kill(f.pid, 0);
+      return true;
+    } catch (e) {
+      return e.code === "EPERM";
+    }
+  }).sort((a, b) => b.cuando - a.cuando)[0];
+  if (!viva) throw new Error("Antigravity no está abierto en este ordenador");
+  return { ANTIGRAVITY_LS_ADDRESS: `127.0.0.1:${viva.httpPort}`, ANTIGRAVITY_CSRF_TOKEN: viva.csrfToken };
+}
+
+function antigravity(ajustes, args) {
+  const programa = antigravityPrograma(ajustes);
+  const entorno = { ...process.env, ...antigravityConexion() };
+  return new Promise((resolver, rechazar) => {
+    const hijo = spawn(programa, ["agentapi", ...args], { env: entorno, windowsHide: true });
+    let salida = "";
+    const reloj = setTimeout(() => hijo.kill(), 60_000);
+    hijo.stdout.on("data", (d) => (salida += d));
+    hijo.stderr.on("data", (d) => (salida += d));
+    hijo.on("error", (e) => {
+      clearTimeout(reloj);
+      rechazar(new Error(`no puedo lanzar el programa de Antigravity: ${e.message}`));
+    });
+    hijo.on("close", (codigo) => {
+      clearTimeout(reloj);
+      let datos = null;
+      try {
+        datos = JSON.parse(salida);
+      } catch {
+        /* respuesta que no es JSON */
+      }
+      if (codigo !== 0 || !datos || datos.error) {
+        const motivo = String(datos?.error || salida || `código ${codigo}`).replaceAll(entorno.ANTIGRAVITY_CSRF_TOKEN, "***");
+        return rechazar(new Error(`Antigravity respondió: ${motivo.slice(0, 200)}`));
+      }
+      resolver(datos.response ?? datos);
+    });
+  });
+}
+
+async function entregarAntigravity(ajustes, agente, nota) {
+  if (estado.leer()[nota.sesion_id]?.fase === "enviando") {
+    return { ok: false, retenida: true, motivo: "entrega dudosa; revisa la conversación y usa «liberar» si no llegó" };
+  }
+  const mensaje = redactar(ajustes, agente, nota);
+  if (mensaje.length > 28_000) return { ok: false, retenida: true, motivo: "la nota es demasiado larga para enviarla a Antigravity" };
+  await antigravity(ajustes, ["get-conversation-metadata", agente.destino]); // la conversación existe y la app responde
+  estado.poner(nota.sesion_id, { fase: "enviando", agente: agente.id }); // antes de enviar: un fallo no duplica
+  await antigravity(ajustes, ["send-message", agente.destino, mensaje]);
+  return { ok: true, detalle: "enviada a la conversación de Antigravity" };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Entrega a Grok Bot: se crea en la app una rutina que se activa con un webhook. El destino es la URL
+// de ese webhook y la clave se guarda aparte, en los secretos. Cada nota arranca la rutina con el
+// mensaje como contexto; la rutina corre en la nube de Grok Bot, así que no hace falta la app abierta.
+
+async function entregarGrokbot(ajustes, agente, nota) {
+  if (estado.leer()[nota.sesion_id]?.fase === "enviando") {
+    return { ok: false, retenida: true, motivo: "entrega dudosa; mira las ejecuciones de la rutina y usa «liberar» si no llegó" };
+  }
+  const clave = leerJson(F_SECRETOS, {}).claves?.[agente.id];
+  if (!clave) return { ok: false, motivo: `falta la clave del webhook: «node puente.mjs clave ${agente.id}»` };
+  estado.poner(nota.sesion_id, { fase: "enviando", agente: agente.id });
+  let r;
+  try {
+    r = await fetch(agente.destino, {
+      method: "POST",
+      headers: { authorization: `Bearer ${clave}`, "content-type": "application/json" },
+      body: JSON.stringify({ context: redactar(ajustes, agente, nota) }),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (e) {
+    if (e.name !== "TimeoutError") estado.quitar(nota.sesion_id); // ni llegó a salir: se puede reintentar
+    throw new Error(`no llego al webhook de Grok Bot (${e.cause?.code || e.name})`);
+  }
+  if (!r.ok) {
+    estado.quitar(nota.sesion_id); // rechazada: no hay nada que duplicar
+    const error = (await r.json().catch(() => ({}))).error;
+    const pista = r.status === 401 || r.status === 403 ? " (¿clave caducada o mal pegada?)" : "";
+    return { ok: false, motivo: `Grok Bot respondió ${r.status}${typeof error === "string" ? `: ${error.slice(0, 150)}` : ""}${pista}` };
+  }
+  return { ok: true, detalle: "rutina de Grok Bot arrancada" };
+}
+
+/** Lee la clave de la entrada estándar para que no quede en el historial de la terminal ni en ningún chat. */
+async function guardarClave(id) {
+  const ajustes = cargarAjustes();
+  const agente = ajustes.agentes.find((g) => g.id === String(id).toLowerCase() && g.tipo === "grokbot");
+  if (!agente) fallar("Uso: node puente.mjs clave <id de un agente de tipo grokbot>");
+  if (process.stdin.isTTY) console.log(`Pega la clave del webhook de «${agente.nombre}» y pulsa Intro:`);
+  let clave = "";
+  for await (const trozo of process.stdin) {
+    clave += trozo;
+    if (clave.includes("\n")) break;
+  }
+  clave = clave.trim().split(/\r?\n/)[0].replace(/^Bearer\s+/i, "");
+  if (clave.length < 8 || /\s/.test(clave)) fallar("Eso no parece una clave.");
+  const s = leerJson(F_SECRETOS, {});
+  s.claves = { ...(s.claves || {}), [agente.id]: clave };
+  escribirJson(F_SECRETOS, s, true);
+  console.log(`Clave guardada en ${F_SECRETOS}.`);
+  process.exit(0);
+}
+
+// ---------------------------------------------------------------------------------------------
 // Reparto
 
 async function entregar(ajustes, agente, nota, codex) {
   try {
-    return agente.tipo === "codex" ? await entregarCodex(ajustes, agente, nota, codex) : await entregarClaude(ajustes, agente, nota);
+    if (agente.tipo === "codex") return await entregarCodex(ajustes, agente, nota, codex);
+    if (agente.tipo === "antigravity") return await entregarAntigravity(ajustes, agente, nota);
+    if (agente.tipo === "grokbot") return await entregarGrokbot(ajustes, agente, nota);
+    return await entregarClaude(ajustes, agente, nota);
   } catch (e) {
     if (agente.tipo === "codex") codex.cerrar();
     return { ok: false, motivo: e.message };
@@ -620,6 +771,18 @@ async function comprobar(aFondo) {
       }
     }
     codex.cerrar();
+  }
+  for (const g of ajustes.agentes.filter((x) => x.tipo === "antigravity")) {
+    try {
+      await antigravity(ajustes, ["get-conversation-metadata", g.destino]);
+      linea(true, `${g.nombre}: conversación de Antigravity encontrada`);
+    } catch (e) {
+      linea(false, `${g.nombre}: ${e.message}`);
+    }
+  }
+  for (const g of ajustes.agentes.filter((x) => x.tipo === "grokbot")) {
+    const hay = Boolean(leerJson(F_SECRETOS, {}).claves?.[g.id]);
+    linea(hay, `${g.nombre}: clave del webhook de Grok Bot ${hay ? "guardada (se prueba con «probar»)" : `sin guardar («node puente.mjs clave ${g.id}»)`}`);
   }
   console.log(fallos ? `\n${fallos} cosa(s) por arreglar.` : "\nTodo en orden.");
   process.exitCode = fallos ? 1 : 0;
@@ -870,6 +1033,8 @@ async function principal() {
       process.exitCode = r.ok ? 0 : 1;
       return;
     }
+    case "clave":
+      return guardarClave(resto[0]);
     case "liberar":
       if (!resto[0] || !estado.leer()[resto[0]]) fallar("Uso: node puente.mjs liberar <sesión de Vocci retenida>");
       estado.quitar(resto[0]);
@@ -893,7 +1058,7 @@ async function principal() {
       return console.log(r.status, await r.text());
     }
     default:
-      console.log(fs.readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 19).map((l) => l.replace(/^\/\/ ?/, "")).join("\n"));
+      console.log(fs.readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 20).map((l) => l.replace(/^\/\/ ?/, "")).join("\n"));
   }
 }
 

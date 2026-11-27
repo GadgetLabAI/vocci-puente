@@ -4,7 +4,7 @@
 
 I want you to set up, on my computer, a bridge between my Vocci ring and my agents. When I record a note that starts with an agent's name (“Bruno, note that…”), the note must arrive by itself in that agent's thread or conversation, and the agent handles it as if I had typed it there.
 
-It works with Claude (desktop app with Claude Code) and with Codex (desktop app). Read the whole text before doing anything.
+It works with Claude (desktop app with Claude Code), Codex, Antigravity and Grok Bot (desktop apps). Read the whole text before doing anything.
 
 ## How it works
 
@@ -28,11 +28,11 @@ It needs Node 20 or later. If it is not installed, tell me how to install it and
 
 Before touching anything, ask me these questions, all together, and wait for my answers. Where you can find the answer yourself, propose it and I will confirm.
 
-1. **Are you Claude or Codex?** Delivery depends on it: in Claude it is a message to the desktop app thread, found by its name; in Codex, a message to the conversation by its identifier.
+1. **Which agent are you: Claude, Codex, Antigravity or Grok Bot?** Delivery depends on it: in Claude it is a message to the desktop app thread, found by its name; in Codex and Antigravity, a message to the conversation by its identifier; in Grok Bot, a routine started by a webhook.
 2. **One agent or several?** For each one:
    - the word that triggers it (its name);
-   - whether it is Claude or Codex (only those two for now);
-   - the destination thread or conversation. In Claude, the exact thread name, which must be unique: if two threads have similar names, suggest renaming one. In Codex, the conversation identifier; if the destination is this very conversation, find it yourself.
+   - its type: `claude`, `codex`, `antigravity` or `grokbot`;
+   - the destination thread or conversation. In Claude, the exact thread name, which must be unique: if two threads have similar names, suggest renaming one. In Codex and Antigravity, the conversation identifier; if the destination is this very conversation, find it yourself (in Antigravity it is in the `ANTIGRAVITY_CONVERSATION_ID` variable or under `~/.gemini/antigravity/conversations`). In Grok Bot, create it yourself (or guide me to ask you in the chat): a routine that is triggered by a webhook and whose instructions are to handle the task that arrives in the context; the destination is the URL shown in the routine's panel, and I paste the key myself in the terminal with `node puente.mjs clave <agent>`: do not ask me for it in the chat.
 3. **Do I have my own server (VPS)?**
    - If I do, set up the mailbox there (“On your own server” in the README).
    - If not, set up a free Cloudflare Worker in my account. If I have no account, guide me through creating one. I do the sign-in (`npx wrangler login`) myself in the browser. In my account, create only the Worker and its database; do not touch anything else.
@@ -75,6 +75,6 @@ If something does not arrive, look at `~/.vocci-puente/puente.log` and the “If
   - what you set up and where each thing is;
   - how to stop it and remove it (`node puente.mjs arranque quitar`, delete the Worker or the service and the Vocci endpoint);
   - what happens with the PC off: notes wait in the mailbox and arrive when it is back on;
-  - what it costs: in Claude, one small call per note; in Codex, nothing until the agent handles it;
+  - what it costs: in Claude, one small call per note; in Codex and Antigravity, nothing until the agent handles it; in Grok Bot, one run of the routine per note;
   - that if a note ever stops arriving, the first thing to check is `~/.vocci-puente/puente.log`;
-  - that in Codex delivery uses an internal part of the app and an update may break it.
+  - that in Codex and Antigravity delivery uses an internal part of the app and an update may break it, and that Antigravity must be open.

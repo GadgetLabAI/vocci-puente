@@ -10,6 +10,8 @@
   <img alt="Anillo Vocci" src="https://img.shields.io/badge/anillo-Vocci-4A5553?style=flat-square">
   <img alt="Claude" src="https://img.shields.io/badge/Claude-probado-2E7D5B?style=flat-square">
   <img alt="Codex" src="https://img.shields.io/badge/Codex-probado-2E7D5B?style=flat-square">
+  <img alt="Antigravity" src="https://img.shields.io/badge/Antigravity-probado-2E7D5B?style=flat-square">
+  <img alt="Grok Bot" src="https://img.shields.io/badge/Grok%20Bot-probado-2E7D5B?style=flat-square">
   <img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-4A5553?style=flat-square">
   <img alt="Sin dependencias" src="https://img.shields.io/badge/dependencias-0-4A5553?style=flat-square">
   <a href="https://www.youtube.com/@GadgetLabOficial"><img alt="YouTube" src="https://img.shields.io/badge/YouTube-GadgetLab-FF0000?style=flat-square&logo=youtube&logoColor=white"></a>
@@ -18,7 +20,7 @@
 Le dices al anillo **Vocci** «Bruno, apunta que el martes hay reunión» y, un par de minutos después, la nota aparece sola en el hilo de tu agente. Él la atiende como si se la hubieras escrito allí. Sin sacar el móvil y sin abrir ninguna app.
 
 - 🎙️ **Se lo dices al anillo y lo hace.** Si la nota empieza por el nombre de tu agente, es para él. Si no, es tuya y no se guarda.
-- 🤖 **Para Claude y para Codex**, en sus apps de escritorio. Uno o varios agentes, cada uno con su nombre y su hilo.
+- 🤖 **Para Claude, Codex, Antigravity y Grok Bot**, en sus apps de escritorio. Uno o varios agentes, cada uno con su nombre y su hilo.
 - ☁️ **Gratis de mantener.** El buzón es un Cloudflare Worker del plan gratuito, o tu propio servidor.
 - 💤 **Con el PC apagado no se pierde nada.** Las notas esperan y entran al encenderlo.
 - 🔍 **Tres archivos de código, sin dependencias.** Tu agente los lee en un par de minutos antes de instalar nada.
@@ -111,8 +113,8 @@ Viven fuera del repositorio, en `~/.vocci-puente/ajustes.json`:
 ```
 
 - **`palabras`**: las formas en que la transcripción suele escribir mal el nombre. Solo cuentan al principio de la nota, quizá tras una muletilla («Oye, Bruno…»).
-- **`tipo` y `destino`**: en `claude`, el nombre del hilo de la app de escritorio, que tiene que ser único; en `codex`, el identificador de la conversación.
-- **Varios agentes**: añade más entradas. Cada uno tiene su palabra y su hilo, y pueden mezclarse Claude y Codex.
+- **`tipo` y `destino`**: en `claude`, el nombre del hilo de la app de escritorio, que tiene que ser único; en `codex` y en `antigravity`, el identificador de la conversación; en `grokbot`, la URL del webhook de una rutina (la clave va aparte, con `node puente.mjs clave <agente>`).
+- **Varios agentes**: añade más entradas. Cada uno tiene su palabra y su hilo, y pueden mezclarse de los cuatro tipos.
 - **`idioma`**: `es` o `en`, para el texto que acompaña a la nota.
 
 Cada vez que cambies agentes o palabras hay que volver a publicar el buzón, porque es él quien decide de quién es cada nota.
@@ -188,7 +190,8 @@ Pulsa «Send test event» en Vocci: en menos de un minuto debe aparecer en el hi
 | `probar <agente> "texto"` | Entrega una nota simulada al hilo, sin pasar por el buzón. |
 | `repartir [--una-vez]` | El repartidor. |
 | `arranque instalar\|quitar\|estado` | Arranque automático con tu sesión. |
-| `liberar <sesión>` | Reintenta una nota de Codex retenida por entrega dudosa. |
+| `liberar <sesión>` | Reintenta una nota retenida por entrega dudosa. |
+| `clave <agente>` | Guarda la clave del webhook de un agente de Grok Bot. Se pega en la terminal; no queda en los ajustes ni en el registro. |
 | `simular "texto"` | Solo para desarrollo: manda al buzón un webhook firmado con el secreto de la variable `VOCCI_SECRETO`. |
 
 ## 🩺 Si una nota no llega
@@ -205,6 +208,8 @@ Mira primero `~/.vocci-puente/puente.log`. Lo habitual:
 - **Claude.** Un programa no puede escribir en un hilo de la app, pero otra sesión de Claude sí. Por cada nota se lanza un `claude -p` mínimo (modelo Haiku, sin conectores y con solo tres herramientas: `ListAgents`, `SendMessage` y `ToolSearch`) que busca el hilo por su nombre y le pasa el mensaje. Gasta unos segundos de tu plan por nota. La app de Claude tiene que estar abierta.
 - **Ese repartidor puede escribir a cualquiera de tus hilos**, no solo al elegido. El texto de la nota viaja marcado como un paquete que no debe interpretar, y el programa solo da la entrega por buena si fue al hilo correcto, pero es una barrera de instrucciones, no técnica.
 - **Codex.** Se usa el servidor MCP local que trae la app (`codex_app`, herramientas `read_thread` y `send_message_to_thread`), sin gastar modelo. Es una pieza interna de la app: una actualización de Codex puede cambiarla. Si la conversación está ocupada, la nota espera. Si un envío se corta a medias no se reenvía a ciegas: queda retenida hasta que lo mires.
+- **Antigravity.** Se usa el comando que trae la propia app (`agentapi send-message`), que escribe en la conversación por su identificador, sin gastar modelo hasta que el agente la atiende. Antigravity tiene que estar abierto. El agente recibe la nota como un mensaje del sistema, no como si la hubieras tecleado tú. Es una pieza interna de la app: una actualización puede cambiarla. Si un envío se corta a medias, la nota queda retenida.
+- **Grok Bot.** Se le pide al bot, en su chat, que cree una rutina que se active con un webhook; la URL y la clave salen en la ficha de esa rutina (panel del bot → Rutinas). Cada nota arranca esa rutina con el mensaje como contexto, así que cada encargo es una ejecución nueva de la rutina, no un mensaje en una conversación abierta. Corre en la nube de Grok Bot: no hace falta tener la app abierta. La clave se guarda en `~/.vocci-puente/secretos.json`.
 - **Quién habla no se comprueba.** Cualquier grabación de tu anillo cuya primera frase empiece por el nombre del agente es un encargo, la diga quien la diga.
 - **Queda un proceso encendido.** El arranque automático lanza el repartidor sin ventana al iniciar sesión. Se quita con `node puente.mjs arranque quitar`.
 - **Privacidad.** Las notas personales no se guardan. Las de los agentes están en el buzón hasta que se entregan; entonces se borra el texto y queda solo el identificador de la grabación, para no repetirla, durante 30 días. El registro no lleva texto de notas ni claves.
@@ -217,6 +222,8 @@ Mira primero `~/.vocci-puente/puente.log`. Lo habitual:
 | Windows 11 + Claude + Cloudflare, con notas reales del anillo | Probado de punta a punta |
 | Montaje hecho por un agente nuevo solo con el prompt | Probado con Claude |
 | Windows 11 + Codex | Entrega probada con una nota simulada (`probar`); sin probar aún con una nota del anillo de punta a punta |
+| Windows 11 + Antigravity + Cloudflare, con una nota real del anillo | Probado de punta a punta |
+| Windows 11 + Grok Bot + Cloudflare, con una nota real del anillo | Probado de punta a punta |
 | Buzón en servidor propio | Probado en local |
 | Arranque automático en macOS (launchd) y Linux (systemd) | Escrito, sin probar |
 
@@ -224,7 +231,7 @@ Si lo montas en algo que no hemos probado y falla, abre una incidencia: nos ayud
 
 ## 🧩 Otros agentes y otras grabadoras
 
-**Otros agentes.** Hoy entrega a Claude y a Codex. El buzón y la cola no saben nada del agente: para añadir otro (Gemini, Grok o el que uses) solo hace falta una función de entrega nueva en `puente.mjs`, siempre que ese agente tenga una forma de recibir un mensaje desde fuera. Si lo consigues con el tuyo, cuéntanoslo en una incidencia o manda un cambio.
+**Otros agentes.** Hoy entrega a Claude, Codex, Antigravity y Grok Bot. El buzón y la cola no saben nada del agente: para añadir otro solo hace falta una función de entrega nueva en `puente.mjs`, siempre que ese agente tenga una forma de recibir un mensaje desde fuera. Si lo consigues con el tuyo, cuéntanoslo en una incidencia o manda un cambio.
 
 **Otras grabadoras.** Está hecho para el anillo Vocci, que es el que tenemos. Cualquier grabadora que mande un webhook con la transcripción puede usar el mismo buzón cambiando cómo se lee el evento (`buzon/nucleo.mjs`). Una que no mande avisos tendría que consultarse cada pocos minutos.
 
